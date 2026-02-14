@@ -3,10 +3,10 @@ package main
 import (
 	"fmt"
 
+	statex "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/state"
 	configx "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/pkg/config"
 	_ "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/pkg/logger/autoload"
 	openrouterx "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/pkg/openrouter"
-	qstashx "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/pkg/qstash"
 )
 
 type AppConfig struct {
@@ -24,9 +24,12 @@ func main() {
 		panic("failed to initialize openrouter client")
 	}
 
-	qstashCfg := configx.MustNew[qstashx.Config]("QSTASH")
-	qstashClient := qstashx.MustNew(*qstashCfg)
-	_ = qstashClient
+	upstashRedisCfg := configx.MustNew[statex.UpstashRedisConfig]("UPSTASH_REDIS")
+	upstashRedisStore, err := statex.NewUpstashRedisStore(*upstashRedisCfg)
+	if err != nil {
+		panic(err)
+	}
+	_ = upstashRedisStore
 
 	fmt.Println("Config and clients loaded")
 }
