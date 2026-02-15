@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/cloudwego/eino/compose"
-	nodex "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/nodes/orchestrator"
+	nodex "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/nodes"
 )
 
 func (o *Orchestrator) compileHandleMessageGraph(

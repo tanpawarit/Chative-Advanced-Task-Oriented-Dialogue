@@ -8,7 +8,7 @@ import (
 
 	"github.com/cloudwego/eino/compose"
 	contractx "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/contract"
-	nodex "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/nodes/orchestrator"
+	nodex "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/nodes"
 	statex "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/state"
 )
 

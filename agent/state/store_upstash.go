@@ -20,9 +20,9 @@ var (
 )
 
 const (
-	defaultStoreKeyPrefix = "atod:session:"
-	defaultStoreTTL       = 24 * time.Hour
-	maxResponseSizeBytes  = 2 << 20
+	defaultStoreTTL      = 24 * time.Hour
+	maxResponseSizeBytes = 2 << 20
+	sessionStateRedisKey = "conv:%s:agent:session"
 )
 
 // Store is the persistence contract used by the orchestrator.
@@ -34,15 +34,6 @@ type Store interface {
 
 // StoreOption customizes UpstashRedisStore.
 type StoreOption func(*UpstashRedisStore)
-
-func WithKeyPrefix(prefix string) StoreOption {
-	return func(s *UpstashRedisStore) {
-		trimmed := strings.TrimSpace(prefix)
-		if trimmed != "" {
-			s.keyPrefix = trimmed
-		}
-	}
-}
 
 func WithTTL(ttl time.Duration) StoreOption {
 	return func(s *UpstashRedisStore) {
@@ -63,7 +54,6 @@ type UpstashRedisStore struct {
 	baseURL    string
 	token      string
 	httpClient *http.Client
-	keyPrefix  string
 	ttl        time.Duration
 }
 
@@ -103,8 +93,7 @@ func NewUpstashRedisStore(cfg UpstashRedisConfig, opts ...StoreOption) (*Upstash
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
-		keyPrefix: defaultStoreKeyPrefix,
-		ttl:       defaultStoreTTL,
+		ttl: defaultStoreTTL,
 	}
 
 	for _, opt := range opts {
@@ -208,11 +197,11 @@ func (s *UpstashRedisStore) Delete(ctx context.Context, sessionID string) error 
 }
 
 func (s *UpstashRedisStore) redisKey(sessionID string) (string, error) {
-	if strings.TrimSpace(sessionID) == "" {
+	trimmedSessionID := strings.TrimSpace(sessionID)
+	if trimmedSessionID == "" {
 		return "", ErrInvalidSession
 	}
-	prefix := strings.TrimSpace(s.keyPrefix)
-	return prefix + sessionID, nil
+	return fmt.Sprintf(sessionStateRedisKey, trimmedSessionID), nil
 }
 
 func (s *UpstashRedisStore) exec(ctx context.Context, command []any) (*redisRESTResponse, error) {

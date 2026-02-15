@@ -112,3 +112,48 @@ Constraint:
 - Runtime node errors are returned immediately.
 - No runtime fallback to legacy/chain execution.
 
+## 6. SessionState Redis Key Policy
+
+- Session state is persisted to a single hardcoded Redis key format:
+  `conv:{session_id}:agent:session`
+- Hard cutover is in effect: no fallback read/write to legacy key format
+  (for example `atod:session:*`).
+
+graph TD
+    Start((Start)) --> Validate[Validate Request]
+    Validate --> LoadState[Load/Create State]
+    LoadState --> ReadMem[Read Memory]
+    ReadMem --> Plan(Plan Goal <br/> <i>LLM: Planner</i>)
+    Plan --> ApplyPlan[Apply Plan to State]
+    ApplyPlan --> Dispatch{Dispatch Specialist}
+
+    subgraph Specialist ["Specialist (Domain Logic)"]
+        direction TB
+        SalesAgent[[Sales Specialist]]
+        SupportAgent[[Support Specialist]]
+        
+        subgraph Runtime ["Specialist Runtime"]
+            direction TB
+            SpecStart((Start)) --> CheckBlock{Blocked?}
+            CheckBlock -- Yes --> StructResp[Structured Response <br/> <i>LLM: Response</i>]
+            CheckBlock -- No --> ToolCheck{Need Tools? <br/> <i>LLM: ToolPlanner</i>}
+            
+            ToolCheck -- Yes --> ExecTools[Execute Tools]
+            ExecTools --> StructResp
+            
+            ToolCheck -- No --> StructResp
+            StructResp --> SpecEnd((End))
+        end
+    end
+
+    Dispatch --> |"Goal: sales.*"| SalesAgent
+    Dispatch --> |"Goal: support.*"| SupportAgent
+    
+    SalesAgent --> Runtime
+    SupportAgent --> Runtime
+    
+    Runtime --> |"Return Result"| ApplyState[Apply State Updates]
+    ApplyState --> SaveState[Validate & Save State]
+    SaveState --> WriteMem[Write Memory]
+    WriteMem --> Finalize[Finalize Reply]
+    Finalize --> End((End))
