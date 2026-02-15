@@ -1,173 +1,114 @@
-sequenceDiagram
-    autonumber
-    participant U as User
-    participant O as Orchestrator Agent
-    participant S as StateStore
-    participant Z as Zep Memory
-    participant SA as Sales Agent
-    participant SU as Support Agent
-    participant T as Tool Gateway
+# Graph-Only Runtime Flow
 
-    U->>O: message(text)
+This project now runs on **Eino Graph only** for both model and orchestrator layers.
+No chain fallback path exists.
 
-    O->>S: Load(SessionState by session_id)
-    S-->>O: SessionState(ActiveGoalID, GoalStack, Goals, Version)
+## 1. Planner Graph (`planner.model_graph`)
 
-    Note over O: Perception + Planning (update/create goals)\n- fill Slots\n- compute Missing + NextQuestion\n- set GoalStatus\n- decide interleave using Priority
+Input: `map[string]any{"input": "<json payload>"}`
+Output: `plannerLLMOutput`
 
-    alt Interleave (new goal priority > current)
-        Note over O: SuspendAndActivate(new_goal)\n- current goal -> suspended\n- GoalStack push\n- ActiveGoalID = new_goal
-    else No interleave
-        Note over O: Keep/Set ActiveGoalID
-    end
+Node sequence:
+1. `prompt` (`AddChatTemplateNode`)
+2. `model` (`AddChatModelNode`)
+3. `parse_json` (`AddLambdaNode` with `compose.MessageParser`)
 
-    %% Zep is always used (not optional)
-    O->>Z: ReadMemory(customer_id)
-    Z-->>O: memory_summary
+Edges:
+`START -> prompt -> model -> parse_json -> END`
 
-    alt Active goal is sales.*
-        O->>SA: AgentRun(active_goal, memory_summary, tool_results=[])
-        alt Goal blocked (Missing not empty)
-            SA-->>O: {message=NextQuestion, tool_requests=[]}
-        else Goal active
-            SA-->>O: {tool_requests=[...], message=""}
-            O->>T: ExecuteTools(agent_type="sales", tool_requests)
-            T-->>O: tool_results
-            O->>SA: AgentRun(active_goal, memory_summary, tool_results)
-            SA-->>O: {message=final_answer, state_updates}
-        end
-    else Active goal is support.*
-        O->>SU: AgentRun(active_goal, memory_summary, tool_results=[])
-        alt Goal blocked (Missing not empty)
-            SU-->>O: {message=NextQuestion, tool_requests=[]}
-        else Goal active
-            SU-->>O: {tool_requests=[...], message=""}
-            O->>T: ExecuteTools(agent_type="support", tool_requests)
-            T-->>O: tool_results
-            O->>SU: AgentRun(active_goal, memory_summary, tool_results)
-            SU-->>O: {message=final_answer, state_updates}
-        end
-    end
+Used by:
+- `plannerImpl.Plan()` marshals request context and invokes this graph.
+- Output is normalized into `PlannerResponse` and schema-validated.
 
-    Note over O: Commit state (Layer 4)\n- merge slots_patch\n- apply set_status\n- if active goal done: MarkGoalDone() -> ResumePrevious()\n- Version++ UpdatedAt
+## 2. Specialist Graphs
 
-    O->>S: Save(SessionState)
-    S-->>O: OK
+### 2.1 Structured Specialist Graph (`specialist.structured_graph`)
 
-    %% Zep write-back is always used (not optional)
-    O->>Z: WriteMemory(customer_id, summary_update)
-    Z-->>O: OK
+Input: `map[string]any{"input": "<json payload>"}`
+Output: `specialistLLMOutput`
 
-    O-->>U: reply(message)
+Node sequence:
+1. `prompt`
+2. `model`
+3. `parse_json`
 
+Edges:
+`START -> prompt -> model -> parse_json -> END`
 
-```mermaid
-flowchart TD
+### 2.2 Tool Planning Graph (`specialist.tool_planning_graph`)
 
-    %% ── Entry ──────────────────────────────────────────────
-    subgraph ENTRY ["Entry"]
-        U(["User"])
-        O["Orchestrator"]
-    end
-    U -->|Inbound message| O
+Input: `map[string]any{"input": "<json payload>"}`
+Output: `*schema.Message` (tool calls or direct content)
 
-    %% ── State & Memory Loading ─────────────────────────────
-    subgraph LOAD ["State & Memory Loading"]
-        SS[("SessionState store")]
-        Z[("Zep memory")]
-    end
-    O -->|Load state| SS
-    SS -->|SessionState| O
-    O -->|Read preferences| Z
-    Z -->|Preference summary| O
+Node sequence:
+1. `prompt`
+2. `model`
 
-    %% ── Perception & Planning ──────────────────────────────
-    subgraph PLAN ["Perception & Planning"]
-        P["Update or create goals"]
-        Dep["Set Missing & NextQuestion"]
-    end
-    O -->|Perception and planning| P
-    P -->|Compute missing and question| Dep
+Edges:
+`START -> prompt -> model -> END`
 
-    %% ── Goal Interleaving ──────────────────────────────────
-    subgraph INTERLEAVE ["Goal Interleaving"]
-        I{"Interleave?"}
-        SUSP["Suspend current goal"]
-        PUSH["Push new goal to GoalStack"]
-        SETA["Set ActiveGoalID → new goal"]
-        SETA2["Keep current ActiveGoalID"]
-        SEL["Selected active goal"]
-    end
-    Dep --> I
-    I -->|Yes| SUSP
-    SUSP --> PUSH
-    PUSH --> SETA
-    I -->|No| SETA2
-    SETA --> SEL
-    SETA2 --> SEL
+### 2.3 Specialist Runtime Graph (`specialist.runtime_graph`)
 
-    %% ── Agent Dispatch ─────────────────────────────────────
-    subgraph DISPATCH ["Agent Dispatch"]
-        GT{"Goal type?"}
-        SA["Sales agent"]
-        SU["Support agent"]
-        M{"Missing info?"}
-    end
-    SEL --> GT
-    GT -->|Sales| SA
-    GT -->|Support| SU
-    SA --> M
-    SU --> M
+Input: `SpecialistRequest`
+Output: `SpecialistResponse`
 
-    %% ── Agent Execution ────────────────────────────────────
-    subgraph EXEC ["Agent Execution"]
-        ASK["Ask NextQuestion"]
-        REQ["Request tools"]
-        TG["Tool gateway"]
-        FIN["Agent finalize"]
-    end
-    M -->|Yes| ASK
-    M -->|No| REQ
-    REQ -->|Execute| TG
-    TG -->|Tool results| FIN
+Node sequence:
+1. `validate_and_prepare`
+2. Branch:
+`tool_path` when `!isBlocked && len(tool_results)==0`
+`structured_path` otherwise
 
-    %% ── State Persistence ──────────────────────────────────
-    subgraph PERSIST ["State Persistence"]
-        COMMIT["Commit slots & status"]
-        SAVE1[("Save SessionState")]
-        SAVE2[("Save SessionState")]
-    end
-    ASK -->|Save| SAVE1
-    FIN -->|Commit updates| COMMIT
-    COMMIT -->|Save| SAVE2
+Edges:
+- `START -> validate_and_prepare`
+- `tool_path -> END`
+- `structured_path -> END`
 
-    %% ── Response ───────────────────────────────────────────
-    subgraph REPLY ["Response"]
-        R(["Reply to user"])
-    end
-    SAVE1 -->|Reply| R
-    SAVE2 -->|Reply| R
-    R -.->|Next message starts new turn| U
+Behavior:
+- `tool_path`: calls tool-planning graph and validates allowed tool list.
+- `structured_path`: calls structured graph for `ask/finalize`.
 
-    %% ── Styles ─────────────────────────────────────────────
-    style ENTRY   fill:#e8f5e9,stroke:#388e3c,stroke-width:2px,color:#1b5e20
-    style LOAD    fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    style PLAN    fill:#fff3e0,stroke:#ef6c00,stroke-width:2px,color:#e65100
-    style INTERLEAVE fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px,color:#4a148c
-    style DISPATCH fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#b71c1c
-    style EXEC    fill:#e0f7fa,stroke:#00838f,stroke-width:2px,color:#006064
-    style PERSIST fill:#f1f8e9,stroke:#558b2f,stroke-width:2px,color:#33691e
-    style REPLY   fill:#ede7f6,stroke:#4527a0,stroke-width:2px,color:#311b92
+## 3. Orchestrator Graph (`orchestrator.handle_message`)
 
-    style U    fill:#a5d6a7,stroke:#2e7d32,stroke-width:2px,color:#1b5e20
-    style O    fill:#81d4fa,stroke:#0277bd,stroke-width:2px,color:#01579b
-    style I    fill:#ce93d8,stroke:#6a1b9a,stroke-width:2px,color:#4a148c
-    style GT   fill:#ef9a9a,stroke:#c62828,stroke-width:2px,color:#b71c1c
-    style M    fill:#ef9a9a,stroke:#c62828,stroke-width:2px,color:#b71c1c
-    style R    fill:#b39ddb,stroke:#4527a0,stroke-width:2px,color:#311b92
-    style SS   fill:#90caf9,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    style Z    fill:#90caf9,stroke:#1565c0,stroke-width:2px,color:#0d47a1
-    style SAVE1 fill:#c5e1a5,stroke:#558b2f,stroke-width:2px,color:#33691e
-    style SAVE2 fill:#c5e1a5,stroke:#558b2f,stroke-width:2px,color:#33691e
-    style TG   fill:#80deea,stroke:#00838f,stroke-width:2px,color:#006064
-```
+Input: `orchestratorGraphInput{session_id, text}`
+Output: `orchestratorGraphOutput{reply}`
+
+Node sequence:
+1. `validate_request`
+2. `load_or_create_state`
+3. `read_memory`
+4. `plan_goal`
+5. `apply_plan`
+6. `dispatch_specialist`
+7. `apply_state_updates`
+8. `validate_and_save_state`
+9. `write_memory`
+10. `finalize_reply`
+
+Edges:
+`START -> validate_request -> load_or_create_state -> read_memory -> plan_goal -> apply_plan -> dispatch_specialist -> apply_state_updates -> validate_and_save_state -> write_memory -> finalize_reply -> END`
+
+Behavior guarantees:
+- State is always validated before save.
+- Memory write happens after save.
+- Empty specialist message is rejected at `finalize_reply`.
+- Errors are fail-fast and returned to caller.
+
+## 4. Dispatch Subflow (inside `dispatch_specialist`)
+
+For active `sales.*` or `support.*` goal:
+1. Specialist pass-1 run.
+2. If no tool requests: return message/state updates.
+3. If tool requests exist:
+- execute tools
+- specialist pass-2 run with `tool_results`
+- merge state updates from both passes
+
+Constraint:
+- pass-2 must not request tools again.
+
+## 5. Error Handling Policy
+
+- Graph compile errors fail startup.
+- Runtime node errors are returned immediately.
+- No runtime fallback to legacy/chain execution.
+
