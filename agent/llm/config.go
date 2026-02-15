@@ -42,7 +42,7 @@ func (c Config) OpenRouterFor(agentType contractx.AgentType) openrouterx.Config 
 	temp := c.Temperature
 
 	switch agentType {
-	case contractx.AgentTypeOrchestrator:
+	case contractx.AgentTypePlanner:
 		if v := strings.TrimSpace(c.OrchestratorModel); v != "" {
 			modelName = v
 		}

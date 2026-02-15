@@ -12,6 +12,9 @@ import (
 	contractx "github.com/tanpawarit/Chative-Advanced-Task-Oriented-Dialogue/agent/contract"
 )
 
+// compilePlannerGraph builds the graph for the Planner agent.
+// This graph takes user input and uses a structured LLM to output a goal plan (JSON).
+// It acts as the "Decision Maker" for the Orchestrator, deciding the next step based on conversation context.
 func compilePlannerGraph(
 	ctx context.Context,
 	chatModel einomodel.BaseChatModel,
@@ -24,6 +27,10 @@ func compilePlannerGraph(
 	return runner, nil
 }
 
+// compileSpecialistStructuredGraph builds the graph for the Specialist's final response generation.
+// It is responsible for crafting the final reply to the user, including slot updates and state changes,
+// in a structured JSON format. This node is executed after any necessary tool calls are completed
+// or immediately if no tools are needed.
 func compileSpecialistStructuredGraph(
 	ctx context.Context,
 	chatModel einomodel.BaseChatModel,
@@ -36,6 +43,10 @@ func compileSpecialistStructuredGraph(
 	return runner, nil
 }
 
+// compileSpecialistToolPlanningGraph builds the graph for the Specialist's tool usage decision.
+// It determines whether the agent needs to call an external tool (e.g., check stock, track order)
+// before formulating a response. If a tool call is generated, the runtime loop will execute it
+// and feed the result back.
 func compileSpecialistToolPlanningGraph(
 	ctx context.Context,
 	chatModel einomodel.BaseChatModel,
@@ -76,6 +87,14 @@ type specialistGraphState struct {
 	IsBlocked bool
 }
 
+// compileSpecialistRuntimeGraph orchestrates the full lifecycle of a Specialist execution.
+// It acts as the "Controller" (Runtime Loop) that coordinates between Tool Planning and Structured Response.
+// Logic:
+// 1. Validates input and check blocker status.
+// 2. If blocked (missing info), skips tools and goes directly to Structured Response to ask user.
+// 3. If not blocked, first checks Tool Planning.
+//   - If tool needed -> executes tool -> then Structured Response.
+//   - If no tool needed -> directly to Structured Response.
 func compileSpecialistRuntimeGraph(
 	ctx context.Context,
 	toolFlow func(context.Context, contractx.SpecialistRequest) (contractx.SpecialistResponse, error),
@@ -159,6 +178,10 @@ func compileSpecialistRuntimeGraph(
 	return runner, nil
 }
 
+// compileStructuredLLMGraph is a helper to build a basic graph that:
+// 1. Constructs a prompt from System Prompt + Input.
+// 2. Invokes the Chat Model.
+// 3. Parses the output JSON into a Go struct (T).
 func compileStructuredLLMGraph[T any](
 	ctx context.Context,
 	chatModel einomodel.BaseChatModel,

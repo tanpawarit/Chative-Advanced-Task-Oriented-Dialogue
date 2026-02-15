@@ -7,8 +7,8 @@ import (
 )
 
 var (
-	//go:embed template/orchestrator.txt
-	orchestratorRaw string
+	//go:embed template/planner.txt
+	plannerRaw string
 
 	//go:embed template/sales.txt
 	salesRaw string
@@ -19,18 +19,18 @@ var (
 
 // PromptSet holds loaded prompt content.
 type PromptSet struct {
-	Orchestrator string
-	Sales        string
-	Support      string
+	Planner string
+	Sales   string
+	Support string
 }
 
 // LoadPromptSet returns a PromptSet with trimmed prompt strings.
 // This is safe to call concurrently; the embed is compile-time, and trimming is cheap.
 func LoadPromptSet() PromptSet {
 	return PromptSet{
-		Orchestrator: strings.TrimSpace(orchestratorRaw),
-		Sales:        strings.TrimSpace(salesRaw),
-		Support:      strings.TrimSpace(supportRaw),
+		Planner: strings.TrimSpace(plannerRaw),
+		Sales:   strings.TrimSpace(salesRaw),
+		Support: strings.TrimSpace(supportRaw),
 	}
 }
 

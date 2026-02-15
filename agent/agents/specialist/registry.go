@@ -34,7 +34,7 @@ func NewRegistry(ctx context.Context, cfg llmx.Config) (contractx.Registry, erro
 
 	prompts := promptx.LoadPromptSet()
 
-	orchestratorModelCfg := cfg.OpenRouterFor(contractx.AgentTypeOrchestrator)
+	orchestratorModelCfg := cfg.OpenRouterFor(contractx.AgentTypePlanner)
 	orchestratorModel, err := orchestratorModelCfg.New(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("%w: create orchestrator model: %v", contractx.ErrModelInvoke, err)
@@ -50,7 +50,7 @@ func NewRegistry(ctx context.Context, cfg llmx.Config) (contractx.Registry, erro
 		return nil, fmt.Errorf("%w: create support model: %v", contractx.ErrModelInvoke, err)
 	}
 
-	planner, err := newPlanner(ctx, orchestratorModel, prompts.Orchestrator)
+	planner, err := newPlanner(ctx, orchestratorModel, prompts.Planner)
 	if err != nil {
 		return nil, err
 	}

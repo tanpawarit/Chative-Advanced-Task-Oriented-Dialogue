@@ -9,9 +9,9 @@ import (
 type AgentType string
 
 const (
-	AgentTypeOrchestrator AgentType = "orchestrator"
-	AgentTypeSales        AgentType = "sales"
-	AgentTypeSupport      AgentType = "support"
+	AgentTypePlanner AgentType = "planner"
+	AgentTypeSales   AgentType = "sales"
+	AgentTypeSupport AgentType = "support"
 )
 
 type PlannerRequest struct {
