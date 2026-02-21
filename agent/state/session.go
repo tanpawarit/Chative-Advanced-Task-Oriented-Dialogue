@@ -16,9 +16,6 @@ type SessionState struct {
 	CustomerID  string `json:"customer_id"`
 	ChannelType string `json:"channel_type"`
 
-	// Concurrency (optimistic locking)
-	Version int64 `json:"version"`
-
 	// ATOD core
 	ActiveGoalID string           `json:"active_goal_id,omitempty"`
 	GoalStack    []string         `json:"goal_stack,omitempty"` // LIFO: suspend/resume
@@ -57,27 +54,11 @@ func (g *Goal) IsDone() bool {
 	return g != nil && g.Status == GoalDone
 }
 
-func (g *Goal) IsSuspended() bool {
-	return g != nil && g.Status == GoalSuspended
-}
-
-func (g *Goal) IsActive() bool {
-	return g != nil && g.Status == GoalActive
-}
-
 func (g *Goal) SetSlot(key string, val any) {
 	if g.Slots == nil {
 		g.Slots = make(map[string]any, 8)
 	}
 	g.Slots[key] = val
-}
-
-func (g *Goal) GetSlot(key string) (any, bool) {
-	if g.Slots == nil {
-		return nil, false
-	}
-	v, ok := g.Slots[key]
-	return v, ok
 }
 
 func (g *Goal) SetMissing(missing []string, nextQuestion string) {
@@ -122,7 +103,6 @@ func NewSessionState(sessionID, workspaceID, customerID, channelType string, now
 		WorkspaceID: workspaceID,
 		CustomerID:  customerID,
 		ChannelType: channelType,
-		Version:     1,
 		Goals:       make(map[string]*Goal, 4),
 		UpdatedAt:   now.UTC(),
 	}

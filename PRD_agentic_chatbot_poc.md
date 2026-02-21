@@ -68,7 +68,7 @@ The specialist agent operates in exactly **two modes**:
 - Merge `slots_patch` into the goal.
 - If goal is `done`:
   - Call `MarkGoalDone()` → Automatically calls `ResumePrevious()`.
-- `Version++`, update `UpdatedAt`.
+- Update `UpdatedAt`.
 - Save `SessionState`.
 
 ### Step 7: Reply
@@ -143,7 +143,6 @@ type SessionState struct {
   WorkspaceID string `json:"workspace_id"`
   CustomerID  string `json:"customer_id"`
   ChannelType string `json:"channel_type"`
-  Version     int64  `json:"version"`
 
   ActiveGoalID string           `json:"active_goal_id,omitempty"`
   GoalStack    []string         `json:"goal_stack,omitempty"`
@@ -241,7 +240,6 @@ Zep stores cross-session **"customer preferences"**, such as:
 ## 7. Non-functional Requirements
 - **Deterministic State Transitions**: Traceable goal/stack changes.
 - **Stateless Orchestrator**: Processes load/save state every request for horizontal scaling.
-- **Optimistic Locking**: Uses `Version` field (short retry on conflict).
 - **Tool Timeouts**: e.g., 3–10 seconds per tool.
 - **Loop Limit**: Maximum 2 agent loops per turn (Planning + Finalize).
 
@@ -310,7 +308,7 @@ type ToolResult struct {
    - Merge `state_updates.slots_patch`.
    - Apply `state_updates.set_status`.
    - If done → `MarkGoalDone()` → `ResumePrevious()`.
-   - Increment `Version`, update `UpdatedAt`.
+   - Update `UpdatedAt`.
    - **Save SessionState**.
    - **Write Zep Memory Update** (allow no-op).
 9. **Reply** to user.

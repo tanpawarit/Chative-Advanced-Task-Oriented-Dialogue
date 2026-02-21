@@ -1,159 +1,116 @@
-# Graph-Only Runtime Flow
-
-This project now runs on **Eino Graph only** for both model and orchestrator layers.
-No chain fallback path exists.
-
-## 1. Planner Graph (`planner.model_graph`)
-
-Input: `map[string]any{"input": "<json payload>"}`
-Output: `plannerLLMOutput`
-
-Node sequence:
-1. `prompt` (`AddChatTemplateNode`)
-2. `model` (`AddChatModelNode`)
-3. `parse_json` (`AddLambdaNode` with `compose.MessageParser`)
-
-Edges:
-`START -> prompt -> model -> parse_json -> END`
-
-Used by:
-- `plannerImpl.Plan()` marshals request context and invokes this graph.
-- Output is normalized into `PlannerResponse` and schema-validated.
-
-## 2. Specialist Graphs
-
-### 2.1 Structured Specialist Graph (`specialist.structured_graph`)
-
-Input: `map[string]any{"input": "<json payload>"}`
-Output: `specialistLLMOutput`
-
-Node sequence:
-1. `prompt`
-2. `model`
-3. `parse_json`
-
-Edges:
-`START -> prompt -> model -> parse_json -> END`
-
-### 2.2 Tool Planning Graph (`specialist.tool_planning_graph`)
-
-Input: `map[string]any{"input": "<json payload>"}`
-Output: `*schema.Message` (tool calls or direct content)
-
-Node sequence:
-1. `prompt`
-2. `model`
-
-Edges:
-`START -> prompt -> model -> END`
-
-### 2.3 Specialist Runtime Graph (`specialist.runtime_graph`)
-
-Input: `SpecialistRequest`
-Output: `SpecialistResponse`
-
-Node sequence:
-1. `validate_and_prepare`
-2. Branch:
-`tool_path` when `!isBlocked && len(tool_results)==0`
-`structured_path` otherwise
-
-Edges:
-- `START -> validate_and_prepare`
-- `tool_path -> END`
-- `structured_path -> END`
-
-Behavior:
-- `tool_path`: calls tool-planning graph and validates allowed tool list.
-- `structured_path`: calls structured graph for `ask/finalize`.
-
-## 3. Orchestrator Graph (`orchestrator.handle_message`)
-
-Input: `orchestratorGraphInput{session_id, text}`
-Output: `orchestratorGraphOutput{reply}`
-
-Node sequence:
-1. `validate_request`
-2. `load_or_create_state`
-3. `read_memory`
-4. `plan_goal`
-5. `apply_plan`
-6. `dispatch_specialist`
-7. `apply_state_updates`
-8. `validate_and_save_state`
-9. `write_memory`
-10. `finalize_reply`
-
-Edges:
-`START -> validate_request -> load_or_create_state -> read_memory -> plan_goal -> apply_plan -> dispatch_specialist -> apply_state_updates -> validate_and_save_state -> write_memory -> finalize_reply -> END`
-
-Behavior guarantees:
-- State is always validated before save.
-- Memory write happens after save.
-- Empty specialist message is rejected at `finalize_reply`.
-- Errors are fail-fast and returned to caller.
-
-## 4. Dispatch Subflow (inside `dispatch_specialist`)
-
-For active `sales.*` or `support.*` goal:
-1. Specialist pass-1 run.
-2. If no tool requests: return message/state updates.
-3. If tool requests exist:
-- execute tools
-- specialist pass-2 run with `tool_results`
-- merge state updates from both passes
-
-Constraint:
-- pass-2 must not request tools again.
-
-## 5. Error Handling Policy
-
-- Graph compile errors fail startup.
-- Runtime node errors are returned immediately.
-- No runtime fallback to legacy/chain execution.
-
-## 6. SessionState Redis Key Policy
-
-- Session state is persisted to a single hardcoded Redis key format:
-  `conv:{session_id}:agent:session`
-- Hard cutover is in effect: no fallback read/write to legacy key format
-  (for example `atod:session:*`).
-
-graph TD
-    Start((Start)) --> Validate[Validate Request]
-    Validate --> LoadState[Load/Create State]
-    LoadState --> ReadMem[Read Memory]
-    ReadMem --> Plan(Plan Goal <br/> <i>LLM: Planner</i>)
-    Plan --> ApplyPlan[Apply Plan to State]
-    ApplyPlan --> Dispatch{Dispatch Specialist}
-
-    subgraph Specialist ["Specialist (Domain Logic)"]
-        direction TB
-        SalesAgent[[Sales Specialist]]
-        SupportAgent[[Support Specialist]]
-        
-        subgraph Runtime ["Specialist Runtime"]
-            direction TB
-            SpecStart((Start)) --> CheckBlock{Blocked?}
-            CheckBlock -- Yes --> StructResp[Structured Response <br/> <i>LLM: Response</i>]
-            CheckBlock -- No --> ToolCheck{Need Tools? <br/> <i>LLM: ToolPlanner</i>}
-            
-            ToolCheck -- Yes --> ExecTools[Execute Tools]
-            ExecTools --> StructResp
-            
-            ToolCheck -- No --> StructResp
-            StructResp --> SpecEnd((End))
-        end
+flowchart TD
+    %% Define Nodes
+    Start((Start))
+    
+    subgraph "1. Validate Request"
+        VR_In[/Input: SessionID, Text/]
+        VR_Check{Valid?}
+        VR_Out[Create GraphState]
+        VR_Err((Error))
     end
 
-    Dispatch --> |"Goal: sales.*"| SalesAgent
-    Dispatch --> |"Goal: support.*"| SupportAgent
+    subgraph "2. Load/Create State"
+        LCS_In[Load from DB]
+        LCS_Check{Found?}
+        LCS_New[New SessionState]
+        LCS_Set[Set in GraphState]
+    end
+
+    subgraph "3. Read Memory"
+        RM_Read[Read Profile from DB]
+        RM_Set[Set MemorySummary]
+    end
+
+    subgraph "4. Plan Goal (LLM)"
+        PG_Prompt[Prepare Prompt]
+        PG_Call[[Call Planner Agent]]
+        PG_Set[Set PlanResp]
+    end
+
+    subgraph "5. Apply Plan"
+        AP_Decide{New Goal?}
+        AP_Create[Create New Goal]
+        AP_Push[Push to Stack]
+        AP_Resume[Resume Old Goal]
+        AP_Set[Set ActiveGoal]
+    end
+
+    subgraph "6. Dispatch Specialist (LLM)"
+        DS_Pick{Goal Type?}
+        DS_Sales[[Pick Sales Specialist]]
+        DS_Support[[Pick Support Specialist]]
+        DS_Run[[Call specialist.Run once]]
+        DS_Internal[Internal in specialist<br/>ReAct tool loop + local tool executor<br/>then structured finalize]
+        DS_Set[Set Message & Updates]
+    end
+
+    subgraph "7. Apply Updates"
+        AU_Update[Update Slots]
+        AU_Status[Update Status]
+        AU_Finish{Mark Done?}
+        AU_Pop[Pop Stack]
+    end
+
+    subgraph "8. Save State"
+        SS_Val[Validate State]
+        SS_Save[Save to DB]
+    end
+
+    subgraph "9. Write Memory"
+        WM_Check{New Info?}
+        WM_Save[Save Profile]
+    end
+
+    subgraph "10. Finalize"
+        FR_Ext[Extract Message]
+        FR_Out[/Output Reply/]
+    end
+
+    End((End))
+
+    %% Connections
+    Start --> VR_In
+    VR_In --> VR_Check
+    VR_Check -- Yes --> VR_Out
+    VR_Check -- No --> VR_Err
+    VR_Out --> LCS_In
     
-    SalesAgent --> Runtime
-    SupportAgent --> Runtime
+    LCS_In --> LCS_Check
+    LCS_Check -- Yes --> LCS_Set
+    LCS_Check -- No --> LCS_New --> LCS_Set
+    LCS_Set --> RM_Read
+
+    RM_Read --> RM_Set --> PG_Prompt
     
-    Runtime --> |"Return Result"| ApplyState[Apply State Updates]
-    ApplyState --> SaveState[Validate & Save State]
-    SaveState --> WriteMem[Write Memory]
-    WriteMem --> Finalize[Finalize Reply]
-    Finalize --> End((End))
+    PG_Prompt --> PG_Call --> PG_Set --> AP_Decide
+
+    AP_Decide -- New --> AP_Create --> AP_Push --> AP_Set
+    AP_Decide -- Resume --> AP_Resume --> AP_Set
+    AP_Set --> DS_Pick
+
+    DS_Pick -- Sales --> DS_Sales
+    DS_Pick -- Support --> DS_Support
+    DS_Sales --> DS_Run
+    DS_Support --> DS_Run
+    DS_Run --> DS_Internal --> DS_Set
+    DS_Set --> AU_Update
+
+    AU_Update --> AU_Status --> AU_Finish
+    AU_Finish -- Yes --> AU_Pop --> SS_Val
+    AU_Finish -- No --> SS_Val
+    
+    SS_Val --> SS_Save --> WM_Check
+    
+    WM_Check -- Yes --> WM_Save --> FR_Ext
+    WM_Check -- No --> FR_Ext
+    
+    FR_Ext --> FR_Out --> End
+
+    %% Styles
+    style PG_Call fill:#ff9,stroke:#f66,stroke-width:2px
+    style DS_Sales fill:#ff9,stroke:#f66,stroke-width:2px
+    style DS_Support fill:#ff9,stroke:#f66,stroke-width:2px
+    style DS_Run fill:#ff9,stroke:#f66,stroke-width:2px
+    style Start fill:#f9f,stroke:#333
+    style End fill:#f9f,stroke:#333
+    style VR_Err fill:#f00,color:#fff

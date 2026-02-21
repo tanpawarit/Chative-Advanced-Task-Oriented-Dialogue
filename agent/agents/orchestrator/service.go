@@ -27,7 +27,6 @@ type Config struct {
 type Orchestrator struct {
 	store  statex.Store
 	models contractx.Registry
-	tools  contractx.ToolGateway
 	memory contractx.MemoryStore
 
 	graphRunner compose.Runnable[nodex.GraphInput, nodex.GraphOutput]
@@ -42,7 +41,6 @@ type Orchestrator struct {
 func New(
 	store statex.Store,
 	models contractx.Registry,
-	tools contractx.ToolGateway,
 	memory contractx.MemoryStore,
 	cfg Config,
 ) (*Orchestrator, error) {
@@ -51,9 +49,6 @@ func New(
 	}
 	if models == nil {
 		return nil, errors.New("model registry is required")
-	}
-	if tools == nil {
-		return nil, errors.New("tool gateway is required")
 	}
 	if memory == nil {
 		memory = noopMemoryStore{}
@@ -75,7 +70,6 @@ func New(
 	o := &Orchestrator{
 		store:       store,
 		models:      models,
-		tools:       tools,
 		memory:      memory,
 		workspaceID: workspaceID,
 		customerID:  customerID,

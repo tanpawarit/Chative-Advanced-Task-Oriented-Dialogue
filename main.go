@@ -18,27 +18,22 @@ type AppConfig struct {
 }
 
 func main() {
-	appCfg := configx.MustNew[AppConfig]("")
-	_ = appCfg
+	_ = configx.MustNew[AppConfig]("")
 
 	openRouterCfg := configx.MustNew[openrouterx.Config]("OPENROUTER")
-	openRouterClient := openrouterx.NewClient(*openRouterCfg)
-	if openRouterClient == nil {
+	if openrouterx.NewClient(*openRouterCfg) == nil {
 		panic("failed to initialize openrouter client")
 	}
+
 	modelCfg := configx.MustNew[llmx.Config]("OPENROUTER")
-	modelRegistry, err := specialistx.NewRegistry(context.Background(), *modelCfg)
-	if err != nil {
+	if _, err := specialistx.NewRegistry(context.Background(), *modelCfg); err != nil {
 		panic(err)
 	}
-	_ = modelRegistry
 
 	upstashRedisCfg := configx.MustNew[statex.UpstashRedisConfig]("UPSTASH_REDIS")
-	upstashRedisStore, err := statex.NewUpstashRedisStore(*upstashRedisCfg)
-	if err != nil {
+	if _, err := statex.NewUpstashRedisStore(*upstashRedisCfg); err != nil {
 		panic(err)
 	}
-	_ = upstashRedisStore
 
 	fmt.Println("Config and clients loaded")
 }

@@ -16,10 +16,6 @@ type Registry interface {
 	Support() Specialist
 }
 
-type ToolGateway interface {
-	Execute(ctx context.Context, agentType string, reqs []ToolRequest) ([]ToolResult, error)
-}
-
 type MemoryStore interface {
 	ReadSummary(ctx context.Context, customerID string) (string, error)
 	WriteSummary(ctx context.Context, customerID string, update string) error

@@ -17,7 +17,6 @@ func ValidateAndSaveState(
 		return nil, fmt.Errorf("%w: graph session is nil", contractx.ErrValidation)
 	}
 
-	in.Session.Version++
 	in.Session.Touch(in.Now)
 	if err := in.Session.Validate(); err != nil {
 		return nil, fmt.Errorf("state validation failed: %w", err)

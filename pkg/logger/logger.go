@@ -41,27 +41,3 @@ func Init(opts ...Config) {
 
 	log.Logger = log.Logger.With().Caller().Stack().Logger()
 }
-
-func Debug() *zerolog.Event {
-	return log.Debug()
-}
-
-func Info() *zerolog.Event {
-	return log.Info()
-}
-
-func Warn() *zerolog.Event {
-	return log.Warn()
-}
-
-func Error() *zerolog.Event {
-	return log.Error()
-}
-
-func Panic() *zerolog.Event {
-	return log.Panic()
-}
-
-func Fatal() *zerolog.Event {
-	return log.Fatal()
-}

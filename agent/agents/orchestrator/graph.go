@@ -55,7 +55,7 @@ func (o *Orchestrator) compileHandleMessageGraph(
 
 	if err := graph.AddLambdaNode("dispatch_specialist",
 		compose.InvokableLambda(func(ctx context.Context, in *nodex.GraphState) (*nodex.GraphState, error) {
-			return nodex.DispatchSpecialist(ctx, in, o.models, o.tools)
+			return nodex.DispatchSpecialist(ctx, in, o.models)
 		}),
 	); err != nil {
 		return nil, fmt.Errorf("add node dispatch_specialist: %w", err)

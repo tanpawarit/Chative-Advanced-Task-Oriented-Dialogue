@@ -12,12 +12,6 @@ import (
 	"github.com/openai/openai-go/option"
 )
 
-type LLMBuilder interface {
-	New(ctx context.Context) (model.ToolCallingChatModel, error)
-}
-
-var _ LLMBuilder = (*OpenRouterConfig)(nil)
-
 var (
 	OpenRouterReasoningBlacklist = map[string]bool{
 		"x-ai/grok-4.1-fast": true,

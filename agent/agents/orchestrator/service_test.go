@@ -103,28 +103,6 @@ func (f *fakeSpecialist) Run(ctx context.Context, req contractx.SpecialistReques
 	return f.responses[idx], nil
 }
 
-type toolCallRecord struct {
-	agentType string
-	reqs      []contractx.ToolRequest
-}
-
-type fakeTools struct {
-	results []contractx.ToolResult
-	err     error
-	calls   []toolCallRecord
-}
-
-func (f *fakeTools) Execute(ctx context.Context, agentType string, reqs []contractx.ToolRequest) ([]contractx.ToolResult, error) {
-	f.calls = append(f.calls, toolCallRecord{
-		agentType: agentType,
-		reqs:      append([]contractx.ToolRequest(nil), reqs...),
-	})
-	if f.err != nil {
-		return nil, f.err
-	}
-	return append([]contractx.ToolResult(nil), f.results...), nil
-}
-
 type fakeRegistry struct {
 	planner contractx.Planner
 	sales   contractx.Specialist
@@ -153,7 +131,6 @@ func TestHandleMessageInvalidInput(t *testing.T) {
 			sales:   &fakeSpecialist{},
 			support: &fakeSpecialist{},
 		},
-		&fakeTools{},
 		&fakeMemory{},
 	)
 
@@ -192,7 +169,6 @@ func TestHandleMessageNoToolPath(t *testing.T) {
 		},
 	}
 	memory := &fakeMemory{summary: "likes lightweight mouse"}
-	tools := &fakeTools{}
 
 	o := newTestOrchestrator(t,
 		store,
@@ -201,7 +177,6 @@ func TestHandleMessageNoToolPath(t *testing.T) {
 			sales:   sales,
 			support: &fakeSpecialist{},
 		},
-		tools,
 		memory,
 	)
 
@@ -217,9 +192,6 @@ func TestHandleMessageNoToolPath(t *testing.T) {
 	}
 	if sales.calls != 1 {
 		t.Fatalf("expected sales specialist called once, got %d", sales.calls)
-	}
-	if len(tools.calls) != 0 {
-		t.Fatalf("expected no tool calls, got %d", len(tools.calls))
 	}
 	if len(store.saved) != 1 {
 		t.Fatalf("expected one save, got %d", len(store.saved))
@@ -244,14 +216,6 @@ func TestHandleMessageToolPassPath(t *testing.T) {
 	sales := &fakeSpecialist{
 		responses: []contractx.SpecialistResponse{
 			{
-				ToolRequests: []contractx.ToolRequest{
-					{
-						Tool: "inventory.query",
-						Args: map[string]any{"query": "gaming mouse under 1500"},
-					},
-				},
-			},
-			{
 				Message: "รุ่น A ราคาเหมาะกับงบและพร้อมส่งครับ",
 				StateUpdates: contractx.StateUpdates{
 					SetStatus: string(statex.GoalDone),
@@ -259,12 +223,6 @@ func TestHandleMessageToolPassPath(t *testing.T) {
 			},
 		},
 	}
-	tools := &fakeTools{
-		results: []contractx.ToolResult{
-			{Tool: "inventory.query", Result: "ok"},
-		},
-	}
-
 	o := newTestOrchestrator(t,
 		store,
 		&fakeRegistry{
@@ -272,7 +230,6 @@ func TestHandleMessageToolPassPath(t *testing.T) {
 			sales:   sales,
 			support: &fakeSpecialist{},
 		},
-		tools,
 		&fakeMemory{},
 	)
 
@@ -283,14 +240,8 @@ func TestHandleMessageToolPassPath(t *testing.T) {
 	if reply != "รุ่น A ราคาเหมาะกับงบและพร้อมส่งครับ" {
 		t.Fatalf("unexpected reply: %q", reply)
 	}
-	if sales.calls != 2 {
-		t.Fatalf("expected sales specialist called twice, got %d", sales.calls)
-	}
-	if len(tools.calls) != 1 {
-		t.Fatalf("expected one tool execution, got %d", len(tools.calls))
-	}
-	if tools.calls[0].agentType != string(contractx.AgentTypeSales) {
-		t.Fatalf("unexpected tool agent type: %s", tools.calls[0].agentType)
+	if sales.calls != 1 {
+		t.Fatalf("expected sales specialist called once, got %d", sales.calls)
 	}
 }
 
@@ -315,7 +266,6 @@ func TestHandleMessageEmptySpecialistMessage(t *testing.T) {
 			},
 			support: &fakeSpecialist{},
 		},
-		&fakeTools{},
 		&fakeMemory{},
 	)
 
@@ -377,7 +327,6 @@ func TestHandleMessageMarkDoneResumesPreviousGoal(t *testing.T) {
 			sales:   sales,
 			support: &fakeSpecialist{},
 		},
-		&fakeTools{},
 		&fakeMemory{},
 	)
 
@@ -432,7 +381,6 @@ func TestHandleMessageSaveErrorPropagates(t *testing.T) {
 			},
 			support: &fakeSpecialist{},
 		},
-		&fakeTools{},
 		memory,
 	)
 
@@ -472,7 +420,6 @@ func TestHandleMessageWriteMemoryErrorPropagates(t *testing.T) {
 			},
 			support: &fakeSpecialist{},
 		},
-		&fakeTools{},
 		memory,
 	)
 
@@ -489,11 +436,10 @@ func newTestOrchestrator(
 	t *testing.T,
 	store statex.Store,
 	registry contractx.Registry,
-	tools contractx.ToolGateway,
 	memory contractx.MemoryStore,
 ) *Orchestrator {
 	t.Helper()
-	o, err := New(store, registry, tools, memory, Config{})
+	o, err := New(store, registry, memory, Config{})
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}

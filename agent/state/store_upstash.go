@@ -155,9 +155,6 @@ func (s *UpstashRedisStore) Save(ctx context.Context, st *SessionState) error {
 	if strings.TrimSpace(st.SessionID) == "" {
 		return ErrInvalidSession
 	}
-	if st.Version <= 0 {
-		st.Version = 1
-	}
 	st.EnsureGoalsMap()
 	if st.UpdatedAt.IsZero() {
 		st.UpdatedAt = time.Now().UTC()
