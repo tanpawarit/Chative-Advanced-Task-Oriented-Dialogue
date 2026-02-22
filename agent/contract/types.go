@@ -38,13 +38,11 @@ type SpecialistRequest struct {
 	UserMessage   string       `json:"user_message"`
 	MemorySummary string       `json:"memory_summary"`
 	ActiveGoal    *statex.Goal `json:"active_goal"`
-	ToolResults   []ToolResult `json:"tool_results,omitempty"`
 }
 
 type SpecialistResponse struct {
-	Message      string        `json:"message"`
-	ToolRequests []ToolRequest `json:"tool_requests,omitempty"`
-	StateUpdates StateUpdates  `json:"state_updates,omitempty"`
+	Message      string       `json:"message"`
+	StateUpdates StateUpdates `json:"state_updates,omitempty"`
 }
 
 type StateUpdates struct {

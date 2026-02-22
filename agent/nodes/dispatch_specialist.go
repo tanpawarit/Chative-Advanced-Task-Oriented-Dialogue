@@ -50,9 +50,6 @@ func dispatchToSpecialist(
 	if err != nil {
 		return "", contractx.StateUpdates{}, err
 	}
-	if len(resp.ToolRequests) > 0 {
-		return "", contractx.StateUpdates{}, fmt.Errorf("%w: specialist returned unexpected tool requests", contractx.ErrSchemaViolation)
-	}
 
 	return strings.TrimSpace(resp.Message), resp.StateUpdates, nil
 }

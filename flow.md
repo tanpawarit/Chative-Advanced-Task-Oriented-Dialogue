@@ -40,7 +40,7 @@ flowchart TD
         DS_Sales[[Pick Sales Specialist]]
         DS_Support[[Pick Support Specialist]]
         DS_Run[[Call specialist.Run once]]
-        DS_Internal[Internal in specialist<br/>ReAct tool loop + local tool executor<br/>then structured finalize]
+        DS_Internal[Internal in specialist<br/>ReAct agent thinks and calls tools<br/>returns unified JSON response]
         DS_Set[Set Message & Updates]
     end
 
